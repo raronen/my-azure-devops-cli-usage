@@ -1,0 +1,21 @@
+{
+  "name": "azure-devops-work-items-creator",
+  "version": "1.0.0",
+  "description": "Create Azure DevOps work items from a JSON data file",
+  "main": "create-work-items.js",
+  "scripts": {
+    "start": "node create-work-items.js",
+    "create": "node create-work-items.js --apply"
+  },
+  "keywords": [
+    "azure-devops",
+    "work-items",
+    "cli",
+    "automation"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}
