@@ -107,6 +107,20 @@ function determineParentEpic(tags, searchEpicId, activityLogEpicId) {
     return null;
 }
 
+function determineParentForLMComponent(parentFeature, generatedLMIds) {
+    if (parentFeature === 'Generate LM - Search') {
+        return generatedLMIds.search;
+    }
+    if (parentFeature === 'Generate LM - Activity Log') {
+        return generatedLMIds.activityLog;
+    }
+    if (parentFeature === 'Generate LM') {
+        // Items that should be children of both LM components - assign to both
+        return { dual: true, search: generatedLMIds.search, activityLog: generatedLMIds.activityLog };
+    }
+    return null;
+}
+
 async function createWorkItem(row, searchEpicId, activityLogEpicId, dryRun = true, workItems = []) {
     const featureName = row.Feature?.trim();
     if (!featureName) {

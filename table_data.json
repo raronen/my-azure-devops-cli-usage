@@ -233,9 +233,17 @@
       "Progress": ""
     },
     {
-      "Feature": "Generate LM (see below)",
+      "Feature": "Generate LM - Search",
       "/search from UI": "+",
       "DGrep shim": "+",
+      "Activity Log (/query)": "-",
+      "Effort (S/M/L)": "L",
+      "Progress": "In progress"
+    },
+    {
+      "Feature": "Generate LM - Activity Log",
+      "/search from UI": "-",
+      "DGrep shim": "-",
       "Activity Log (/query)": "+",
       "Effort (S/M/L)": "L",
       "Progress": "In progress"
@@ -367,6 +375,204 @@
       "Activity Log (/query)": "+",
       "Effort (S/M/L)": "M",
       "Progress": ""
+    },
+    {
+      "Feature": "Single table",
+      "/search from UI": "+",
+      "DGrep shim": "+",
+      "Activity Log (/query)": "+",
+      "Effort (S/M/L)": "M",
+      "Progress": "Done",
+      "ParentFeature": "Generate LM"
+    },
+    {
+      "Feature": "Multiple tables",
+      "/search from UI": "+",
+      "DGrep shim": "+",
+      "Activity Log (/query)": "-",
+      "Effort (S/M/L)": "S",
+      "Progress": "",
+      "ParentFeature": "Generate LM - Search"
+    },
+    {
+      "Feature": "Multi-workspace (tenant ID)",
+      "/search from UI": "-",
+      "DGrep shim": "+",
+      "Activity Log (/query)": "",
+      "Effort (S/M/L)": "S",
+      "Progress": "",
+      "ParentFeature": "Generate LM - Search"
+    },
+    {
+      "Feature": "Ambiguous & type casting",
+      "/search from UI": "+",
+      "DGrep shim": "+",
+      "Activity Log (/query)": "+",
+      "Effort (S/M/L)": "M",
+      "Progress": "",
+      "ParentFeature": "Generate LM"
+    },
+    {
+      "Feature": "Hidden columns",
+      "/search from UI": "+",
+      "DGrep shim": "+",
+      "Activity Log (/query)": "-",
+      "Effort (S/M/L)": "S",
+      "Progress": "",
+      "ParentFeature": "Generate LM - Search"
+    },
+    {
+      "Feature": "Hidden columns using parser",
+      "/search from UI": "?",
+      "DGrep shim": "-",
+      "Activity Log (/query)": "",
+      "Effort (S/M/L)": "M",
+      "Progress": "",
+      "ParentFeature": "Generate LM - Search"
+    },
+    {
+      "Feature": "Hard-coded columns (take from CMS?)",
+      "/search from UI": "+",
+      "DGrep shim": "+",
+      "Activity Log (/query)": "+",
+      "Effort (S/M/L)": "S",
+      "Progress": "",
+      "ParentFeature": "Generate LM"
+    },
+    {
+      "Feature": "Include / exclude tags",
+      "/search from UI": "+",
+      "DGrep shim": "+",
+      "Activity Log (/query)": "+",
+      "Effort (S/M/L)": "S",
+      "Progress": "",
+      "ParentFeature": "Generate LM"
+    },
+    {
+      "Feature": "Billing (for basic)",
+      "/search from UI": "-",
+      "DGrep shim": "",
+      "Activity Log (/query)": "",
+      "Effort (S/M/L)": "S",
+      "Progress": ""
+    },
+    {
+      "Feature": "ABAC & TLR v1\\v2",
+      "/search from UI": "+",
+      "DGrep shim": "-",
+      "Activity Log (/query)": "-",
+      "Effort (S/M/L)": "M",
+      "Progress": "",
+      "ParentFeature": "Generate LM - Search"
+    },
+    {
+      "Feature": "Resource (centric)",
+      "/search from UI": "-",
+      "DGrep shim": "-",
+      "Activity Log (/query)": "",
+      "Effort (S/M/L)": "M",
+      "Progress": ""
+    },
+    {
+      "Feature": "Application Insights (legacy)",
+      "/search from UI": "-",
+      "DGrep shim": "-",
+      "Activity Log (/query)": "",
+      "Effort (S/M/L)": "M",
+      "Progress": ""
+    },
+    {
+      "Feature": "External patterns: arg, adx (requires Entra OBO tokens flow)",
+      "/search from UI": "-",
+      "DGrep shim": "",
+      "Activity Log (/query)": "",
+      "Effort (S/M/L)": "M",
+      "Progress": ""
+    },
+    {
+      "Feature": "Remote resources patterns (\"app\", \"workspace\", \"resource\")",
+      "/search from UI": "-",
+      "DGrep shim": "-",
+      "Activity Log (/query)": "-",
+      "Effort (S/M/L)": "M",
+      "Progress": ""
+    },
+    {
+      "Feature": "System functions",
+      "/search from UI": "+",
+      "DGrep shim": "-",
+      "Activity Log (/query)": "-",
+      "Effort (S/M/L)": "S",
+      "Progress": "",
+      "ParentFeature": "Generate LM - Search"
+    },
+    {
+      "Feature": "User functions",
+      "/search from UI": "-",
+      "DGrep shim": "-",
+      "Activity Log (/query)": "",
+      "Effort (S/M/L)": "S",
+      "Progress": ""
+    },
+    {
+      "Feature": "empty datatable \\ \"normalization\"",
+      "/search from UI": "+",
+      "DGrep shim": "+",
+      "Activity Log (/query)": "+",
+      "Effort (S/M/L)": "S",
+      "Progress": "",
+      "ParentFeature": "Generate LM"
+    },
+    {
+      "Feature": "LM Stats",
+      "/search from UI": "+",
+      "DGrep shim": "-",
+      "Activity Log (/query)": "-",
+      "Effort (S/M/L)": "S",
+      "Progress": "",
+      "ParentFeature": "Generate LM - Search"
+    },
+    {
+      "Feature": "Subscription\\Resource Group",
+      "/search from UI": "-",
+      "DGrep shim": "-",
+      "Activity Log (/query)": "-",
+      "Effort (S/M/L)": "M",
+      "Progress": ""
+    },
+    {
+      "Feature": "Scope=\"hierarchy\" url param",
+      "/search from UI": "-",
+      "DGrep shim": "-",
+      "Activity Log (/query)": "-",
+      "Effort (S/M/L)": "",
+      "Progress": ""
+    },
+    {
+      "Feature": "Resource types filters (as request param)",
+      "/search from UI": "",
+      "DGrep shim": "",
+      "Activity Log (/query)": "",
+      "Effort (S/M/L)": "",
+      "Progress": ""
+    },
+    {
+      "Feature": "Time Column filter (\"TimeGenerate\", \"timestamp\") & ingestion time filter",
+      "/search from UI": "+",
+      "DGrep shim": "+",
+      "Activity Log (/query)": "+",
+      "Effort (S/M/L)": "S",
+      "Progress": "In progress (Oleg)",
+      "ParentFeature": "Generate LM"
+    },
+    {
+      "Feature": "Aux placements (Delta, streaming, inline (?))",
+      "/search from UI": "+",
+      "DGrep shim": "+",
+      "Activity Log (/query)": "-",
+      "Effort (S/M/L)": "S",
+      "Progress": "",
+      "ParentFeature": "Generate LM - Search"
     }
   ]
 }
