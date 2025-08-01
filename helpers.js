@@ -42,13 +42,13 @@ function getStateFromProgress(progress) {
 function getTagsFromRow(row) {
     const tags = ['draft->laqs'];
     
-    if (row['/search from UI']?.trim() === '+') {
+    if (row['/search from UI']?.trim().includes('+')) {
         tags.push('UI /search');
     }
-    if (row['DGrep shim']?.trim() === '+') {
+    if (row['DGrep shim']?.trim().includes('+')) {
         tags.push('shim');
     }
-    if (row['Activity Log (/query)']?.trim() === '+') {
+    if (row['Activity Log (/query)']?.trim().includes('+')) {
         tags.push('AL');
     }
         
