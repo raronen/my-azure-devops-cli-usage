@@ -43,14 +43,19 @@ async function findOrCreateEpic(title, parentId = null, dryRun = true) {
 
     const { code: queryCode, stdout: queryStdout } = await runCommand(queryCommand);
     
-    if (queryCode === 0) {
-        const queryResult = JSON.parse(queryStdout);
-        if (queryResult.workItems && queryResult.workItems.length > 0) {
-            const epicId = queryResult.workItems[0].id;
-            return {
-                id: epicId,
-                message: `Found existing Epic #${epicId}: ${title}`
-            };
+    if (queryCode === 0 && queryStdout.trim()) {
+        try {
+            const queryResult = JSON.parse(queryStdout);
+            if (queryResult.workItems && queryResult.workItems.length > 0) {
+                const epicId = queryResult.workItems[0].id;
+                return {
+                    id: epicId,
+                    message: `Found existing Epic #${epicId}: ${title}`
+                };
+            }
+        } catch (parseError) {
+            console.log(`Query returned non-JSON output: ${queryStdout}`);
+            // Continue to create new Epic
         }
     }
 
@@ -73,7 +78,19 @@ async function findOrCreateEpic(title, parentId = null, dryRun = true) {
         return null;
     }
 
-    const result = JSON.parse(createStdout);
+    if (!createStdout.trim()) {
+        console.error('Error: Empty response from Azure CLI when creating Epic');
+        return null;
+    }
+
+    let result;
+    try {
+        result = JSON.parse(createStdout);
+    } catch (parseError) {
+        console.error('Error parsing JSON response when creating Epic:', createStdout);
+        return null;
+    }
+    
     const epicId = result.id;
 
     // If this Epic should have a parent, create the relationship
@@ -187,12 +204,34 @@ async function createWorkItem(row, searchEpicId, activityLogEpicId, dryRun = tru
         console.error('Error creating work item:', stderr);
         return null;
     }
-        
-    const result = JSON.parse(stdout);
+
+    if (!stdout.trim()) {
+        console.error('Error: Empty response from Azure CLI');
+        return null;
+    }
+
+    let result;
+    try {
+        result = JSON.parse(stdout);
+    } catch (parseError) {
+        console.error('Error parsing JSON response:', stdout);
+        return null;
+    }
+    
     const workItemId = result.id;
 
     // Create parent relationship if needed
-    if (parentEpicId && !parentEpicId.startsWith('DRY_RUN_')) {
+    if (parentEpicId && typeof parentEpicId === 'string' && !parentEpicId.startsWith('DRY_RUN_')) {
+        const relationCommand = [
+            'az boards work-item relation add',
+            `--org ${ORGANIZATION}`,
+            `--id ${workItemId}`,
+            `--relation-type parent`,
+            `--target-id ${parentEpicId}`
+        ].join(' ');
+
+        await runCommand(relationCommand);
+    } else if (parentEpicId && typeof parentEpicId === 'number') {
         const relationCommand = [
             'az boards work-item relation add',
             `--org ${ORGANIZATION}`,

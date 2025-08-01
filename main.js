@@ -10,7 +10,7 @@ function extractWorkItemId(resultString) {
 }
 
 // Function to create LM Component work items with specific parent relationships
-async function createLMComponentWorkItem(row, generatedLMIds, dryRun, workItems) {
+async function createLMComponentWorkItem(row, generatedLMIds, dryRun, workItems, forceParent = null) {
     const featureName = row.Feature?.trim();
     if (!featureName) {
         return null;
@@ -31,7 +31,13 @@ async function createLMComponentWorkItem(row, generatedLMIds, dryRun, workItems)
     let parentId = null;
     let parentInfo = '';
     
-    if (row.ParentFeature === 'Generate LM - Search') {
+    if (forceParent === 'search') {
+        parentId = generatedLMIds.search;
+        parentInfo = ` (child of Generate LM - Search #${parentId})`;
+    } else if (forceParent === 'activityLog') {
+        parentId = generatedLMIds.activityLog;
+        parentInfo = ` (child of Generate LM - Activity Log #${parentId})`;
+    } else if (row.ParentFeature === 'Generate LM - Search') {
         parentId = generatedLMIds.search;
         parentInfo = ` (child of Generate LM - Search #${parentId})`;
     } else if (row.ParentFeature === 'Generate LM - Activity Log') {
@@ -73,9 +79,69 @@ async function createLMComponentWorkItem(row, generatedLMIds, dryRun, workItems)
         return result.join('\n');
     }
 
-    // Create actual work item (non-dry run logic would go here)
-    // For now, just return the dry run format since we're in development
-    return `Created ${workItemType}: ${title}${parentInfo}`;
+    // Create actual work item
+    const { createWorkItem: createActualWorkItem } = require('./create-work-items');
+    
+    // Create a mock row object for the createWorkItem function
+    const mockRow = {
+        Feature: featureName,
+        'Effort (S/M/L)': effort,
+        Progress: row.Progress,
+        '/search from UI': '',
+        'DGrep shim': '',
+        'Activity Log (/query)': ''
+    };
+    
+    // Use the existing createWorkItem function but with no Epic parent (since these are Feature children)
+    const command = [
+        'az boards work-item create',
+        `--org https://msazure.visualstudio.com`,
+        `--project "One"`,
+        `--type "${workItemType}"`,
+        `--title "${title}"`,
+        '--fields',
+        `System.AreaPath="One\\LogAnalytics\\QueryService"`,
+        `System.IterationPath="One\\Bromine\\CY25Q3\\Monthly\\07 Jul (Jun 29 - Jul 26)"`,
+        `System.Tags="${tagsString}"`,
+        `System.State="${state}"`
+    ].join(' ');
+    
+    const { runCommand } = require('./helpers');
+    const { code, stdout, stderr } = await runCommand(command);
+    if (code !== 0) {
+        console.error('Error creating LM component work item:', stderr);
+        return null;
+    }
+
+    if (!stdout.trim()) {
+        console.error('Error: Empty response from Azure CLI when creating LM component');
+        return null;
+    }
+
+    let result;
+    try {
+        result = JSON.parse(stdout);
+    } catch (parseError) {
+        console.error('Error parsing JSON response when creating LM component:', stdout);
+        return null;
+    }
+    
+    const workItemId = result.id;
+
+    // Create parent relationship with the Generate LM Feature
+    if (parentId && !parentId.toString().startsWith('DRY_RUN_')) {
+        const relationCommand = [
+            'az boards work-item relation add',
+            `--org https://msazure.visualstudio.com`,
+            `--id ${workItemId}`,
+            `--relation-type parent`,
+            `--target-id ${parentId}`
+        ].join(' ');
+
+        await runCommand(relationCommand);
+    }
+
+    return `Created ${workItemType} #${workItemId}: ${title}${parentInfo}`;
 }
 
 async function main() {
@@ -156,10 +222,27 @@ async function main() {
         // Now process Logical Model Components that have ParentFeature
         for (const row of queryPipelineData) {
             if (row.ParentFeature) {
-                const result = await createLMComponentWorkItem(row, generatedLMIds, dryRun, workItems);
-                if (result) {
-                    console.log(result);
-                    console.log('-'.repeat(50));
+                if (row.ParentFeature === 'Generate LM') {
+                    // Create work item as child of Generate LM - Search
+                    const searchResult = await createLMComponentWorkItem(row, generatedLMIds, dryRun, workItems, 'search');
+                    if (searchResult) {
+                        console.log(searchResult);
+                        console.log('-'.repeat(50));
+                    }
+                    
+                    // Create work item as child of Generate LM - Activity Log
+                    const activityLogResult = await createLMComponentWorkItem(row, generatedLMIds, dryRun, workItems, 'activityLog');
+                    if (activityLogResult) {
+                        console.log(activityLogResult);
+                        console.log('-'.repeat(50));
+                    }
+                } else {
+                    // Single parent case
+                    const result = await createLMComponentWorkItem(row, generatedLMIds, dryRun, workItems);
+                    if (result) {
+                        console.log(result);
+                        console.log('-'.repeat(50));
+                    }
                 }
             }
         }
