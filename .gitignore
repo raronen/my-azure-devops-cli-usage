@@ -41,3 +41,7 @@ coverage
 .vscode
 *.swp
 *.swo
+
+# Generated markdown reports
+*.md
+!README.md

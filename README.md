@@ -50,6 +50,21 @@ npm run create
 node main.js --apply
 ```
 
+### Markdown Report Generation
+
+In dry run mode, the tool automatically generates a comprehensive markdown report showing:
+- Epic hierarchy with Mermaid diagram
+- Work items organized by Epic
+- Status breakdown with emojis (✅ Done, 🚧 Active, ⭕ New)
+- Summary statistics
+
+**Default output:** `dry-run-report.md`
+
+**Custom output filename:**
+```bash
+node main.js --output my-report.md
+```
+
 ## Epic Hierarchy
 
 The tool automatically creates an Epic hierarchy:

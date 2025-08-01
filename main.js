@@ -1,8 +1,15 @@
 const fs = require('fs').promises;
 const { createWorkItem, checkAuth, authenticate, findOrCreateEpic } = require('./create-work-items');
+const { generateMarkdownReport } = require('./markdown-generator');
 
 async function main() {
     try {
+        // Parse command line arguments
+        const outputIndex = process.argv.indexOf('--output');
+        const outputFile = outputIndex !== -1 && process.argv[outputIndex + 1] 
+            ? process.argv[outputIndex + 1] 
+            : 'dry-run-report.md';
+
         // Check authentication
         if (!await checkAuth()) {
             await authenticate();
@@ -44,14 +51,23 @@ async function main() {
         // Read and parse the JSON data
         const rawData = await fs.readFile('table_data.json', 'utf8');
         const { queryPipelineData } = JSON.parse(rawData);
+        
+        // Collect work items for markdown report (dry run only)
+        const workItems = [];
     
         // Process each row
         for (const row of queryPipelineData) {
-            const result = await createWorkItem(row, searchEpicResult.id, activityLogEpicResult.id, dryRun);
+            const result = await createWorkItem(row, searchEpicResult.id, activityLogEpicResult.id, dryRun, workItems);
             if (result) {
                 console.log(result);
                 console.log('-'.repeat(50));
             }
+        }
+
+        // Generate markdown report if in dry run mode
+        if (dryRun && workItems.length > 0) {
+            console.log(`\n📄 Generating markdown report...`);
+            await generateMarkdownReport(workItems, outputFile);
         }
     } catch (error) {
         console.error('Error:', error.message);

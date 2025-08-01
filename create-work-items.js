@@ -107,7 +107,7 @@ function determineParentEpic(tags, searchEpicId, activityLogEpicId) {
     return null;
 }
 
-async function createWorkItem(row, searchEpicId, activityLogEpicId, dryRun = true) {
+async function createWorkItem(row, searchEpicId, activityLogEpicId, dryRun = true, workItems = []) {
     const featureName = row.Feature?.trim();
     if (!featureName) {
         return null;
@@ -125,7 +125,19 @@ async function createWorkItem(row, searchEpicId, activityLogEpicId, dryRun = tru
     const tagsString = tags.join(';');
     const parentEpicId = determineParentEpic(tags, searchEpicId, activityLogEpicId);
 
+    // Add to workItems array for markdown report (dry run only)
     if (dryRun) {
+        workItems.push({
+            title: title,
+            type: workItemType,
+            state: state,
+            tags: tags,
+            areaPath: AREA_PATH,
+            iterationPath: ITERATION_PATH,
+            parentEpicId: parentEpicId,
+            originalFeature: featureName
+        });
+        
         const result = [
             `Would create ${workItemType}:`,
             `  Title: ${title}`,
