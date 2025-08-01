@@ -40,15 +40,32 @@ The tool provides two ways to run:
 ```bash
 npm start
 # or
-node create-work-items.js
+node main.js
 ```
 
 2. **Create Mode** - Actually create the work items:
 ```bash
 npm run create
 # or
-node create-work-items.js --apply
+node main.js --apply
 ```
+
+## Epic Hierarchy
+
+The tool automatically creates an Epic hierarchy:
+
+```
+[Draft->LAQS] /search (Root Epic)
+└── [Draft->LAQS] Activity Log /query (Child Epic)
+    └── Work items with "AL" tag
+└── Work items with "UI /search" tag (if they don't have "AL" tag)
+```
+
+**Parent Assignment Rules:**
+- Items with "AL" tag → Parent is "[Draft->LAQS] Activity Log /query" Epic
+- Items with only "UI /search" tag → Parent is "[Draft->LAQS] /search" Epic  
+- Items with both tags → Parent is "[Draft->LAQS] Activity Log /query" Epic (higher priority)
+- Items with neither tag → No parent Epic
 
 ## Data Format
 
@@ -86,7 +103,8 @@ Work items are created based on data in `table_data.json`. The file should conta
 
 ## Project Structure
 
-- `create-work-items.js` - Main script
+- `main.js` - Entry point and execution logic
+- `create-work-items.js` - Business logic for work item creation
 - `helpers.js` - Utility functions
 - `table_data.json` - Work items data
 - `package.json` - Project configuration
