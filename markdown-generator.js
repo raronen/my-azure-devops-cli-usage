@@ -16,13 +16,89 @@ function getTypeIcon(type) {
 function generateMermaidDiagram() {
     return `\`\`\`mermaid
 graph TD
-    E1[["[Draft->LAQS] /search"]]
-    E2[["[Draft->LAQS] Activity Log /query"]]
+    E1["[Draft->LAQS] /search"]
+    E2["[Draft->LAQS] Activity Log /query"]
     E1 --> E2
     
     style E1 fill:#e1f5fe
     style E2 fill:#f3e5f5
 \`\`\``;
+}
+
+function generateDetailedHierarchyDiagram(searchItems, activityLogItems) {
+    const searchFeatures = searchItems.filter(item => item.type === 'Feature').slice(0, 8); // Limit for readability
+    const activityLogFeatures = activityLogItems.filter(item => item.type === 'Feature').slice(0, 8);
+    
+    let diagram = `\`\`\`mermaid
+graph TD
+    E1["🏛️ [Draft->LAQS] /search<br/>Epic"]
+    E2["🏛️ [Draft->LAQS] Activity Log /query<br/>Epic"]
+    
+    E1 --> E2
+`;
+
+    // Add some key Features under /search Epic
+    searchFeatures.forEach((item, index) => {
+        const nodeId = `SF${index + 1}`;
+        const shortTitle = item.originalFeature.length > 40 
+            ? item.originalFeature.substring(0, 40) + '...' 
+            : item.originalFeature;
+        const icon = item.state === 'Done' ? '✅' : item.state === 'Active' ? '🚧' : '⭕';
+        diagram += `    ${nodeId}["${icon} 🎯 ${shortTitle}"]
+    E1 --> ${nodeId}
+`;
+    });
+
+    // Add some key Features under Activity Log Epic
+    activityLogFeatures.forEach((item, index) => {
+        const nodeId = `AF${index + 1}`;
+        const shortTitle = item.originalFeature.length > 40 
+            ? item.originalFeature.substring(0, 40) + '...' 
+            : item.originalFeature;
+        const icon = item.state === 'Done' ? '✅' : item.state === 'Active' ? '🚧' : '⭕';
+        diagram += `    ${nodeId}["${icon} 🎯 ${shortTitle}"]
+    E2 --> ${nodeId}
+`;
+    });
+
+    // Add Generate LM Features and their children
+    const generateLMSearch = searchItems.find(item => item.originalFeature === 'Generate LM - Search');
+    const generateLMActivityLog = activityLogItems.find(item => item.originalFeature === 'Generate LM - Activity Log');
+    
+    if (generateLMSearch) {
+        diagram += `    GLS["🚧 🎯 Generate LM - Search"]
+    E1 --> GLS
+    LM1["⭕ 📋 Multiple tables"]
+    LM2["⭕ 📋 Hidden columns"] 
+    LM3["⭕ 🎯 ABAC & TLR v1\\v2"]
+    LM4["⭕ 📋 System functions"]
+    GLS --> LM1
+    GLS --> LM2
+    GLS --> LM3
+    GLS --> LM4
+`;
+    }
+
+    if (generateLMActivityLog) {
+        diagram += `    GLA["🚧 🎯 Generate LM - Activity Log"]
+    E2 --> GLA
+    LMA1["⭕ 📋 Hard-coded columns"]
+    LMA2["⭕ 📋 Include / exclude tags"]
+    LMA3["⭕ 📋 empty datatable"]
+    GLA --> LMA1
+    GLA --> LMA2
+    GLA --> LMA3
+`;
+    }
+
+    diagram += `
+    style E1 fill:#e1f5fe
+    style E2 fill:#f3e5f5
+    style GLS fill:#fff3e0
+    style GLA fill:#fff3e0
+\`\`\``;
+
+    return diagram;
 }
 
 function generateWorkItemSection(title, items) {
@@ -84,6 +160,10 @@ ${generateSummaryTable(searchItems, activityLogItems, orphanItems)}
 ## 🏗️ Epic Hierarchy
 
 ${generateMermaidDiagram()}
+
+## 🔗 Detailed Work Items Hierarchy
+
+${generateDetailedHierarchyDiagram(searchItems, activityLogItems)}
 
 ## 📋 Work Items by Epic
 
