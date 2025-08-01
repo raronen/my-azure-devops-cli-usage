@@ -1,8 +1,5 @@
-const fs = require('fs').promises;
 const {
     runCommand,
-    checkAuth,
-    authenticate,
     getStateFromProgress,
     getTagsFromRow,
     getWorkItemType
@@ -13,6 +10,16 @@ const ORGANIZATION = 'https://msazure.visualstudio.com';
 const PROJECT = 'One';
 const AREA_PATH = 'One\\LogAnalytics\\QueryService';
 const ITERATION_PATH = 'One\\Bromine\\CY25Q3\\Monthly\\07 Jul (Jun 29 - Jul 26)';
+
+async function checkAuth() {
+    const { code } = await runCommand('az account show');
+    return code === 0;
+}
+
+async function authenticate() {
+    console.log('Not authenticated. Running az login...');
+    await runCommand('az login');
+}
 
 async function createWorkItem(row, dryRun = true) {
     const featureName = row.Feature?.trim();
@@ -65,43 +72,8 @@ async function createWorkItem(row, dryRun = true) {
     return `Created ${workItemType} #${result.id}: ${title}`;
 }
 
-async function main() {
-    try {
-        // Check authentication
-        if (!await checkAuth()) {
-            await authenticate();
-            if (!await checkAuth()) {
-                console.error('Authentication failed. Please try again.');
-                process.exit(1);
-            }
-        }
-
-        // Check if --apply flag is present
-        const dryRun = !process.argv.includes('--apply');
-
-        if (dryRun) {
-            console.log('DRY RUN MODE - No items will be created');
-            console.log('Use --apply to create actual work items');
-            console.log('-'.repeat(50));
-        }
-
-        // Read and parse the JSON data
-        const rawData = await fs.readFile('table_data.json', 'utf8');
-        const { queryPipelineData } = JSON.parse(rawData);
-    
-        // Process each row
-        for (const row of queryPipelineData) {
-            const result = await createWorkItem(row, dryRun);
-            if (result) {
-                console.log(result);
-                console.log('-'.repeat(50));
-            }
-        }
-    } catch (error) {
-        console.error('Error:', error.message);
-        process.exit(1);
-    }
-}
-
-// Run the script
-main();
+module.exports = {
+    createWorkItem,
+    checkAuth,
+    authenticate
+};

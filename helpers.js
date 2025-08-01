@@ -30,7 +30,7 @@ function getStateFromProgress(progress) {
     }
     
     progress = progress.toLowerCase();
-    if (progress === 'done' || progress === 'mostly done') {
+    if (progress === 'done' || progress === 'complete' || progress === 'closed') {
         return 'Done';
     }
     if (['in progress', 'not done', 'partial'].some(x => progress.includes(x))) {
