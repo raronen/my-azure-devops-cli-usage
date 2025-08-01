@@ -114,10 +114,11 @@ async function findOrCreateEpic(title, parentId = null, dryRun = true) {
 
 function determineParentEpic(tags, searchEpicId, activityLogEpicId) {
     // If item has "AL" tag, it should be child of Activity Log Epic (higher priority)
+    // This takes precedence even if it also has "UI /search" tag
     if (tags.includes('AL')) {
         return activityLogEpicId;
     }
-    // If item has "UI /search" tag, it should be child of /search Epic
+    // If item has "UI /search" tag but no "AL" tag, it should be child of /search Epic
     if (tags.includes('UI /search')) {
         return searchEpicId;
     }
@@ -138,7 +139,7 @@ function determineParentForLMComponent(parentFeature, generatedLMIds) {
     return null;
 }
 
-async function createWorkItem(row, searchEpicId, activityLogEpicId, dryRun = true, workItems = []) {
+async function createWorkItem(row, searchEpicId, activityLogEpicId, dryRun = true, workItems = [], rowNumber = null) {
     const featureName = row.Feature?.trim();
     if (!featureName) {
         return null;
@@ -196,8 +197,9 @@ async function createWorkItem(row, searchEpicId, activityLogEpicId, dryRun = tru
         `System.AreaPath="${AREA_PATH}"`,
         `System.IterationPath="${ITERATION_PATH}"`,
         `System.Tags="${tagsString}"`,
-        `System.State="${state}"`
-    ].join(' ');
+        `System.State="${state}"`,
+        rowNumber ? `One_custom.CustomField1=${rowNumber.toString().padStart(3, '0')}` : ''
+    ].filter(Boolean).join(' ');
     
     const { code, stdout, stderr } = await runCommand(command);
     if (code !== 0) {

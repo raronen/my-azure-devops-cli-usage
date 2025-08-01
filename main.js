@@ -10,7 +10,7 @@ function extractWorkItemId(resultString) {
 }
 
 // Function to create LM Component work items with specific parent relationships
-async function createLMComponentWorkItem(row, generatedLMIds, dryRun, workItems, forceParent = null) {
+async function createLMComponentWorkItem(row, generatedLMIds, dryRun, workItems, forceParent = null, rowNumber = null) {
     const featureName = row.Feature?.trim();
     if (!featureName) {
         return null;
@@ -103,8 +103,9 @@ async function createLMComponentWorkItem(row, generatedLMIds, dryRun, workItems,
         `System.AreaPath="One\\LogAnalytics\\QueryService"`,
         `System.IterationPath="One\\Bromine\\CY25Q3\\Monthly\\07 Jul (Jun 29 - Jul 26)"`,
         `System.Tags="${tagsString}"`,
-        `System.State="${state}"`
-    ].join(' ');
+        `System.State="${state}"`,
+        rowNumber ? `One_custom.CustomField1=${rowNumber.toString().padStart(3, '0')}` : ''
+    ].filter(Boolean).join(' ');
     
     const { runCommand } = require('./helpers');
     const { code, stdout, stderr } = await runCommand(command);
@@ -203,9 +204,17 @@ async function main() {
             activityLog: null
         };
     
-        // Process each row
-        for (const row of queryPipelineData) {
-            const result = await createWorkItem(row, searchEpicResult.id, activityLogEpicResult.id, dryRun, workItems);
+        // Process each row (skip items with ParentFeature as they'll be processed separately)
+        for (let i = 0; i < queryPipelineData.length; i++) {
+            const row = queryPipelineData[i];
+            const rowNumber = i + 1; // Start from row 1 instead of 0
+            
+            // Skip items that have ParentFeature - they'll be processed in the LM component section
+            if (row.ParentFeature) {
+                continue;
+            }
+            
+            const result = await createWorkItem(row, searchEpicResult.id, activityLogEpicResult.id, dryRun, workItems, rowNumber);
             if (result) {
                 console.log(result);
                 console.log('-'.repeat(50));
@@ -220,25 +229,21 @@ async function main() {
         }
         
         // Now process Logical Model Components that have ParentFeature
-        for (const row of queryPipelineData) {
+        for (let i = 0; i < queryPipelineData.length; i++) {
+            const row = queryPipelineData[i];
+            const rowNumber = i + 1; // Start from row 1 instead of 0
+            
             if (row.ParentFeature) {
                 if (row.ParentFeature === 'Generate LM') {
-                    // Create work item as child of Generate LM - Search
-                    const searchResult = await createLMComponentWorkItem(row, generatedLMIds, dryRun, workItems, 'search');
-                    if (searchResult) {
-                        console.log(searchResult);
-                        console.log('-'.repeat(50));
-                    }
-                    
-                    // Create work item as child of Generate LM - Activity Log
-                    const activityLogResult = await createLMComponentWorkItem(row, generatedLMIds, dryRun, workItems, 'activityLog');
+                    // Create work item as child of Generate LM - Activity Log (higher priority)
+                    const activityLogResult = await createLMComponentWorkItem(row, generatedLMIds, dryRun, workItems, 'activityLog', rowNumber);
                     if (activityLogResult) {
                         console.log(activityLogResult);
                         console.log('-'.repeat(50));
                     }
                 } else {
                     // Single parent case
-                    const result = await createLMComponentWorkItem(row, generatedLMIds, dryRun, workItems);
+                    const result = await createLMComponentWorkItem(row, generatedLMIds, dryRun, workItems, null, rowNumber);
                     if (result) {
                         console.log(result);
                         console.log('-'.repeat(50));
