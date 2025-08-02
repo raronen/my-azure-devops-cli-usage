@@ -118,7 +118,20 @@ function generateWorkItemSection(title, items) {
         section += `  - **Tags:** ${item.tags.join(', ')}\n`;
         section += `  - **State:** ${item.state}\n`;
         section += `  - **Area Path:** ${item.areaPath}\n`;
-        section += `  - **Iteration:** ${item.iterationPath}\n\n`;
+        section += `  - **Iteration:** ${item.iterationPath}\n`;
+        
+        // Add scheduling information if available
+        if (item.startDate && item.targetDate) {
+            section += `  - **⏰ Start Date:** ${item.startDate}\n`;
+            section += `  - **🎯 Target Date:** ${item.targetDate}\n`;
+            if (item.hasHolidayImpact) {
+                section += `  - **🏖️ Holiday Impact:** Yes (+23 days)\n`;
+            }
+        } else {
+            section += `  - **❌ MISSING DATES:** No start/target dates assigned!\n`;
+        }
+        
+        section += `\n`;
     });
     
     return section;

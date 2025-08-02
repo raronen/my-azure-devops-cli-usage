@@ -2,8 +2,10 @@ const { formatDate, calculateStartDate } = require('./date-helpers');
 
 // Constants for scheduling
 const MAX_PARALLEL_ITEMS = 8;
+const MAX_LM_PARALLEL = 3; // Maximum LM items in parallel
 const ACTIVITY_LOG_DEADLINE = new Date('2025-09-30'); // End of September
 const SEARCH_DEADLINE = new Date('2025-11-30'); // End of November
+const QUERY_DEADLINE = new Date('2025-12-31'); // End of December for query items
 
 // Holiday period
 const HOLIDAY_START = new Date('2025-09-22');
@@ -28,7 +30,7 @@ function getRandomDuration(workItemType) {
 function categorizeItems(workItems) {
     const activityLogItems = [];
     const searchItems = [];
-    const orphanItems = [];
+    const queryItems = [];
     
     for (const item of workItems) {
         // Check if item has any "+" in Activity Log column
@@ -41,19 +43,19 @@ function categorizeItems(workItems) {
                          item.row['DGrep shim'] === '+' || 
                          item.row['DGrep shim'].includes('+');
         
-        // Check if item has no "+" in any column (orphan)
-        const isOrphan = !hasActivityLog && !hasSearch;
+        // Items with no "+" in any column go to query category
+        const hasNoPlus = !hasActivityLog && !hasSearch;
         
-        if (isOrphan) {
-            orphanItems.push(item);
-        } else if (hasActivityLog) {
+        if (hasActivityLog) {
             activityLogItems.push(item);
         } else if (hasSearch) {
             searchItems.push(item);
+        } else if (hasNoPlus) {
+            queryItems.push(item);
         }
     }
     
-    return { activityLogItems, searchItems, orphanItems };
+    return { activityLogItems, searchItems, queryItems };
 }
 
 function getStateFromProgress(progress) {
@@ -165,9 +167,18 @@ function scheduleItemByState(item, state, deadline) {
     }
 }
 
+function countActiveLMItemsOnDate(scheduledItems, checkDate) {
+    // Count LM items that are active on the given date
+    return scheduledItems.filter(item => 
+        item.isLM &&
+        item.startDate && item.targetDate &&
+        item.startDate <= checkDate && item.targetDate > checkDate
+    ).length;
+}
+
 function scheduleAllItems(workItems, lmItems = []) {
     // Categorize items but schedule everything together to respect global constraint
-    const { activityLogItems, searchItems, orphanItems } = categorizeItems(workItems);
+    const { activityLogItems, searchItems, queryItems } = categorizeItems(workItems);
     
     // Identify which LM items belong to which category
     const lmActivityLogItems = lmItems.filter(lmItem => 
@@ -182,7 +193,7 @@ function scheduleAllItems(workItems, lmItems = []) {
     const allItems = [
         ...activityLogItems.map(item => ({ ...item, category: 'activityLog' })),
         ...searchItems.map(item => ({ ...item, category: 'search' })),
-        ...orphanItems.map(item => ({ ...item, category: 'orphan' })),
+        ...queryItems.map(item => ({ ...item, category: 'query' })),
         ...lmActivityLogItems.map(item => ({ ...item, category: 'activityLog', isLM: true })),
         ...lmSearchItems.map(item => ({ ...item, category: 'search', isLM: true }))
     ];
@@ -212,14 +223,14 @@ function scheduleAllItems(workItems, lmItems = []) {
     // Sort new items by priority (Activity Log MUST come first due to dependencies)
     newItems.sort((a, b) => {
         // Priority 1: Category - Activity Log has HIGHEST priority (Search depends on it)
-        const categoryPriority = { activityLog: 0, orphan: 1, search: 2 };
+        const categoryPriority = { activityLog: 0, search: 1, query: 2 };
         if (categoryPriority[a.category] !== categoryPriority[b.category]) {
             return categoryPriority[a.category] - categoryPriority[b.category];
         }
         
         // Priority 2: LM items first within same category
         if (a.isLM !== b.isLM) {
-            return b.isLM ? 1 : -1; // LM items first
+            return a.isLM ? -1 : 1; // LM items first (fix: -1 for LM to come first)
         }
         
         // Priority 3: Shorter duration first for better scheduling
@@ -240,8 +251,17 @@ function scheduleAllItems(workItems, lmItems = []) {
             const activeCount = countActiveItemsOnDate(globalScheduled, proposedStartDate);
             
             if (activeCount < MAX_PARALLEL_ITEMS) {
-                // We found a valid start date
-                break;
+                // If this is an LM item, also check LM constraint
+                if (item.isLM) {
+                    const activeLMCount = countActiveLMItemsOnDate(globalScheduled, proposedStartDate);
+                    if (activeLMCount < MAX_LM_PARALLEL) {
+                        // Valid for both constraints
+                        break;
+                    }
+                } else {
+                    // Non-LM item, just needs to fit in global constraint
+                    break;
+                }
             }
             
             // Move to next day
@@ -275,12 +295,12 @@ function scheduleAllItems(workItems, lmItems = []) {
     // Separate scheduled items back into categories for return
     const scheduledActivityLog = globalScheduled.filter(item => item.category === 'activityLog');
     const scheduledSearch = globalScheduled.filter(item => item.category === 'search');
-    const scheduledOrphans = globalScheduled.filter(item => item.category === 'orphan');
+    const scheduledQuery = globalScheduled.filter(item => item.category === 'query');
     
     return {
         activityLog: scheduledActivityLog,
         search: scheduledSearch,
-        orphans: scheduledOrphans,
+        query: scheduledQuery,
         all: globalScheduled
     };
 }

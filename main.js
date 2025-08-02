@@ -23,15 +23,15 @@ function determineParentEpic(row, searchEpicId, activityLogEpicId, queryEpicId) 
                      row['DGrep shim'] === '+' || 
                      (row['DGrep shim'] && row['DGrep shim'].includes('+'));
     
-    // Check if item has no "+" in any column (orphan)
-    const isOrphan = !hasActivityLog && !hasSearch;
+    // Items with no "+" in any column go to query epic
+    const hasNoPlus = !hasActivityLog && !hasSearch;
     
-    if (isOrphan) {
-        return queryEpicId; // Orphans become children of /query epic
-    } else if (hasActivityLog) {
+    if (hasActivityLog) {
         return activityLogEpicId;
     } else if (hasSearch) {
         return searchEpicId;
+    } else if (hasNoPlus) {
+        return queryEpicId; // No-plus items become children of /query epic
     }
     
     return null;
@@ -61,7 +61,7 @@ async function updateEpicDates(epicId, startDate, targetDate) {
 }
 
 // Function to create LM Component work items with specific parent relationships
-async function createLMComponentWorkItem(row, generatedLMIds, dryRun, workItems, forceParent = null, rowNumber = null) {
+async function createLMComponentWorkItem(row, generatedLMIds, dryRun, workItems, forceParent = null, rowNumber = null, schedulingInfo = null) {
     const featureName = row.Feature?.trim();
     if (!featureName) {
         return null;
@@ -100,19 +100,22 @@ async function createLMComponentWorkItem(row, generatedLMIds, dryRun, workItems,
         parentInfo = ` (child of Generate LM - Search #${parentId})`;
     }
 
-    // Add to workItems array for markdown report (dry run only)
-    if (dryRun) {
-        workItems.push({
-            title: title,
-            type: workItemType,
-            state: state,
-            tags: tags,
-            areaPath: 'One\\LogAnalytics\\QueryService',
-            iterationPath: 'One\\Bromine\\CY25Q3\\Monthly\\07 Jul (Jun 29 - Jul 26)',
-            parentEpicId: null, // LM components are children of Features, not Epics
-            parentFeatureId: parentId,
-            originalFeature: featureName
-        });
+        // Add to workItems array for markdown report (dry run only)
+        if (dryRun) {
+            workItems.push({
+                title: title,
+                type: workItemType,
+                state: state,
+                tags: tags,
+                areaPath: 'One\\LogAnalytics\\QueryService',
+                iterationPath: 'One\\Bromine\\CY25Q3\\Monthly\\07 Jul (Jun 29 - Jul 26)',
+                parentEpicId: null, // LM components are children of Features, not Epics
+                parentFeatureId: parentId,
+                originalFeature: featureName,
+                startDate: schedulingInfo?.startDate || null,
+                targetDate: schedulingInfo?.targetDate || null,
+                hasHolidayImpact: schedulingInfo?.hasHolidayImpact || false
+            });
         
         const result = [
             `Would create ${workItemType}:`,
@@ -346,18 +349,29 @@ async function main() {
             const rowNumber = i + 1; // Start from row 1 instead of 0
             
             if (row.ParentFeature) {
+                // Get scheduling info for this row
+                const schedulingInfo = schedulingMap[i] || null;
+                
                 if (row.ParentFeature === 'Generate LM') {
                     // Create work item as child of Generate LM - Activity Log (higher priority)
-                    const activityLogResult = await createLMComponentWorkItem(row, generatedLMIds, dryRun, workItems, 'activityLog', rowNumber);
+                    const activityLogResult = await createLMComponentWorkItem(row, generatedLMIds, dryRun, workItems, 'activityLog', rowNumber, schedulingInfo);
                     if (activityLogResult) {
                         console.log(activityLogResult);
+                        if (schedulingInfo) {
+                            console.log(`  Start Date: ${schedulingInfo.startDate}`);
+                            console.log(`  Target Date: ${schedulingInfo.targetDate}`);
+                        }
                         console.log('-'.repeat(50));
                     }
                 } else {
                     // Single parent case
-                    const result = await createLMComponentWorkItem(row, generatedLMIds, dryRun, workItems, null, rowNumber);
+                    const result = await createLMComponentWorkItem(row, generatedLMIds, dryRun, workItems, null, rowNumber, schedulingInfo);
                     if (result) {
                         console.log(result);
+                        if (schedulingInfo) {
+                            console.log(`  Start Date: ${schedulingInfo.startDate}`);
+                            console.log(`  Target Date: ${schedulingInfo.targetDate}`);
+                        }
                         console.log('-'.repeat(50));
                     }
                 }

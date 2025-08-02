@@ -186,7 +186,10 @@ async function createWorkItem(row, searchEpicId, activityLogEpicId, queryEpicId,
             areaPath: AREA_PATH,
             iterationPath: ITERATION_PATH,
             parentEpicId: parentEpicId,
-            originalFeature: featureName
+            originalFeature: featureName,
+            startDate: schedulingInfo?.startDate || null,
+            targetDate: schedulingInfo?.targetDate || null,
+            hasHolidayImpact: schedulingInfo?.hasHolidayImpact || false
         });
         
         const result = [
