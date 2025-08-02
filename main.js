@@ -2,6 +2,8 @@ const fs = require('fs').promises;
 const { createWorkItem, checkAuth, authenticate, findOrCreateEpic } = require('./create-work-items');
 const { generateMarkdownReport } = require('./markdown-generator');
 const { getStateFromProgress, getWorkItemType } = require('./helpers');
+const { scheduleAllItems, calculateEpicDates } = require('./scheduling');
+const { formatDate } = require('./date-helpers');
 
 // Helper function to extract work item ID from result string
 function extractWorkItemId(resultString) {
@@ -22,7 +24,7 @@ async function createLMComponentWorkItem(row, generatedLMIds, dryRun, workItems,
     }
     
     const workItemType = getWorkItemType(effort);
-    const title = `[Draft->LAQS] ${featureName}`;
+    const title = `[D->L] [LM] ${featureName}`;
     const state = getStateFromProgress(row.Progress);
     const tags = ['draft->laqs'];
     const tagsString = tags.join(';');
@@ -174,8 +176,16 @@ async function main() {
         // Create Epics first
         console.log('Creating/finding Epics...');
         
-        // Create the root Epic for /search
-        const searchEpicResult = await findOrCreateEpic('[Draft->LAQS] /search', null, dryRun);
+        // Create the root Epic for /query
+        const queryEpicResult = await findOrCreateEpic('[Draft->LAQS] /query', null, dryRun);
+        if (!queryEpicResult) {
+            console.error('Failed to create/find query Epic');
+            process.exit(1);
+        }
+        console.log(queryEpicResult.message);
+        
+        // Create the /search Epic as child of /query Epic
+        const searchEpicResult = await findOrCreateEpic('[Draft->LAQS] /search', queryEpicResult.id, dryRun);
         if (!searchEpicResult) {
             console.error('Failed to create/find search Epic');
             process.exit(1);
@@ -198,6 +208,52 @@ async function main() {
         // Collect work items for markdown report (dry run only)
         const workItems = [];
         
+        // Prepare work items for scheduling (regular items)
+        const workItemsForScheduling = [];
+        const lmItemsForScheduling = [];
+        
+        for (let i = 0; i < queryPipelineData.length; i++) {
+            const row = queryPipelineData[i];
+            
+            if (!row['Effort (S/M/L)']?.trim()) {
+                continue;
+            }
+            
+            const workItemType = getWorkItemType(row['Effort (S/M/L)'].trim());
+            const itemData = {
+                id: `row_${i}`, // Temporary ID for scheduling
+                title: `[D->L] ${row.Feature}`,
+                workItemType: workItemType,
+                row: row,
+                rowIndex: i
+            };
+            
+            if (row.ParentFeature) {
+                // LM items
+                lmItemsForScheduling.push(itemData);
+            } else {
+                // Regular items
+                workItemsForScheduling.push(itemData);
+            }
+        }
+        
+        // Apply scheduling logic to get dates
+        console.log('Calculating schedules with parallel work constraints and LM items...');
+        const scheduledItems = scheduleAllItems(workItemsForScheduling, lmItemsForScheduling);
+        console.log(`Scheduled ${scheduledItems.all.length} items with dates`);
+        console.log('-'.repeat(50));
+        
+        // Create a mapping from row index to scheduling info
+        const schedulingMap = {};
+        for (const scheduledItem of scheduledItems.all) {
+            const rowIndex = scheduledItem.rowIndex;
+            schedulingMap[rowIndex] = {
+                startDate: formatDate(scheduledItem.startDate),
+                targetDate: formatDate(scheduledItem.targetDate),
+                hasHolidayImpact: scheduledItem.hasHolidayImpact || false
+            };
+        }
+        
         // Track Generate LM work item IDs for parent relationships
         const generatedLMIds = {
             search: null,
@@ -214,9 +270,16 @@ async function main() {
                 continue;
             }
             
-            const result = await createWorkItem(row, searchEpicResult.id, activityLogEpicResult.id, dryRun, workItems, rowNumber);
+            // Get scheduling info for this row
+            const schedulingInfo = schedulingMap[i] || null;
+            
+            const result = await createWorkItem(row, searchEpicResult.id, activityLogEpicResult.id, queryEpicResult.id, dryRun, workItems, rowNumber, schedulingInfo);
             if (result) {
                 console.log(result);
+                if (schedulingInfo) {
+                    console.log(`  Start Date: ${schedulingInfo.startDate}`);
+                    console.log(`  Target Date: ${schedulingInfo.targetDate}`);
+                }
                 console.log('-'.repeat(50));
                 
                 // Track Generate LM work item IDs for later use

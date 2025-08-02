@@ -16,10 +16,13 @@ function getTypeIcon(type) {
 function generateMermaidDiagram() {
     return `\`\`\`mermaid
 graph TD
+    E0["[Draft->LAQS] /query"]
     E1["[Draft->LAQS] /search"]
     E2["[Draft->LAQS] Activity Log /query"]
+    E0 --> E1
     E1 --> E2
     
+    style E0 fill:#fff3e0
     style E1 fill:#e1f5fe
     style E2 fill:#f3e5f5
 \`\`\``;
@@ -121,16 +124,17 @@ function generateWorkItemSection(title, items) {
     return section;
 }
 
-function generateSummaryTable(searchItems, activityLogItems, orphanItems) {
-    const totalItems = searchItems.length + activityLogItems.length + orphanItems.length;
-    const doneCount = [...searchItems, ...activityLogItems, ...orphanItems].filter(item => item.state === 'Done').length;
-    const activeCount = [...searchItems, ...activityLogItems, ...orphanItems].filter(item => item.state === 'Active').length;
-    const newCount = [...searchItems, ...activityLogItems, ...orphanItems].filter(item => item.state === 'New').length;
+function generateSummaryTable(queryItems, searchItems, activityLogItems, orphanItems) {
+    const totalItems = queryItems.length + searchItems.length + activityLogItems.length + orphanItems.length;
+    const doneCount = [...queryItems, ...searchItems, ...activityLogItems, ...orphanItems].filter(item => item.state === 'Done').length;
+    const activeCount = [...queryItems, ...searchItems, ...activityLogItems, ...orphanItems].filter(item => item.state === 'Active').length;
+    const newCount = [...queryItems, ...searchItems, ...activityLogItems, ...orphanItems].filter(item => item.state === 'New').length;
     
     return `## 📊 Summary
 
 | Epic | Work Items | Status Breakdown |
 |------|------------|------------------|
+| [Draft->LAQS] /query | ${queryItems.length} | ✅ ${queryItems.filter(i => i.state === 'Done').length} / 🚧 ${queryItems.filter(i => i.state === 'Active').length} / ⭕ ${queryItems.filter(i => i.state === 'New').length} |
 | [Draft->LAQS] /search | ${searchItems.length} | ✅ ${searchItems.filter(i => i.state === 'Done').length} / 🚧 ${searchItems.filter(i => i.state === 'Active').length} / ⭕ ${searchItems.filter(i => i.state === 'New').length} |
 | [Draft->LAQS] Activity Log /query | ${activityLogItems.length} | ✅ ${activityLogItems.filter(i => i.state === 'Done').length} / 🚧 ${activityLogItems.filter(i => i.state === 'Active').length} / ⭕ ${activityLogItems.filter(i => i.state === 'New').length} |
 | No Epic (Orphan Items) | ${orphanItems.length} | ✅ ${orphanItems.filter(i => i.state === 'Done').length} / 🚧 ${orphanItems.filter(i => i.state === 'Active').length} / ⭕ ${orphanItems.filter(i => i.state === 'New').length} |
@@ -139,6 +143,10 @@ function generateSummaryTable(searchItems, activityLogItems, orphanItems) {
 
 async function generateMarkdownReport(workItems, outputFile = 'dry-run-report.md') {
     // Categorize work items by their parent Epic
+    const queryItems = workItems.filter(item => 
+        item.parentEpicId === 'DRY_RUN_QUERY_EPIC_ID'
+    );
+    
     const searchItems = workItems.filter(item => 
         item.parentEpicId === 'DRY_RUN_SEARCH_EPIC_ID'
     );
@@ -148,14 +156,18 @@ async function generateMarkdownReport(workItems, outputFile = 'dry-run-report.md
     );
     
     const orphanItems = workItems.filter(item => 
-        !item.parentEpicId || item.parentEpicId === null
+        !item.parentEpicId || (
+            item.parentEpicId !== 'DRY_RUN_QUERY_EPIC_ID' && 
+            item.parentEpicId !== 'DRY_RUN_SEARCH_EPIC_ID' && 
+            item.parentEpicId !== 'DRY_RUN_ACTIVITY_LOG_EPIC_ID'
+        )
     );
 
     const content = `# 🚀 Azure DevOps Work Items Creation Plan
 
 *Generated on: ${new Date().toLocaleString()}*
 
-${generateSummaryTable(searchItems, activityLogItems, orphanItems)}
+${generateSummaryTable(queryItems, searchItems, activityLogItems, orphanItems)}
 
 ## 🏗️ Epic Hierarchy
 
@@ -163,9 +175,11 @@ ${generateMermaidDiagram()}
 
 ## 🔗 Detailed Work Items Hierarchy
 
-${generateDetailedHierarchyDiagram(searchItems, activityLogItems)}
+${generateDetailedHierarchyDiagram(queryItems, searchItems, activityLogItems)}
 
 ## 📋 Work Items by Epic
+
+${generateWorkItemSection('[Draft->LAQS] /query', queryItems)}
 
 ${generateWorkItemSection('[Draft->LAQS] /search', searchItems)}
 

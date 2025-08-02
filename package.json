@@ -5,7 +5,9 @@
   "main": "main.js",
   "scripts": {
     "start": "node main.js",
-    "create": "node main.js --apply"
+    "create": "node main.js --apply",
+    "update-dates": "node update-dates.js",
+    "update-dates-apply": "node update-dates.js --apply"
   },
   "keywords": [
     "azure-devops",

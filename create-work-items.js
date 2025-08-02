@@ -24,9 +24,14 @@ async function authenticate() {
 async function findOrCreateEpic(title, parentId = null, dryRun = true) {
     if (dryRun) {
         // Generate unique IDs for dry run based on title
-        const uniqueId = title.includes('/search') && !title.includes('Activity Log') 
-            ? 'DRY_RUN_SEARCH_EPIC_ID' 
-            : 'DRY_RUN_ACTIVITY_LOG_EPIC_ID';
+        let uniqueId;
+        if (title.includes('/query') && !title.includes('/search') && !title.includes('Activity Log')) {
+            uniqueId = 'DRY_RUN_QUERY_EPIC_ID';
+        } else if (title.includes('/search') && !title.includes('Activity Log')) {
+            uniqueId = 'DRY_RUN_SEARCH_EPIC_ID';
+        } else {
+            uniqueId = 'DRY_RUN_ACTIVITY_LOG_EPIC_ID';
+        }
         return {
             id: uniqueId,
             message: `Would create/find Epic: ${title}${parentId ? ` (child of ${parentId})` : ''}`
@@ -112,16 +117,28 @@ async function findOrCreateEpic(title, parentId = null, dryRun = true) {
     };
 }
 
-function determineParentEpic(tags, searchEpicId, activityLogEpicId) {
-    // If item has "AL" tag, it should be child of Activity Log Epic (higher priority)
-    // This takes precedence even if it also has "UI /search" tag
-    if (tags.includes('AL')) {
+function determineParentEpic(row, searchEpicId, activityLogEpicId, queryEpicId) {
+    // Check if item has any "+" in Activity Log column
+    const hasActivityLog = row['Activity Log (/query)'] === '+' || 
+                          (row['Activity Log (/query)'] && row['Activity Log (/query)'].includes('+'));
+    
+    // Check if item has any "+" in search columns
+    const hasSearch = row['/search from UI'] === '+' || 
+                     (row['/search from UI'] && row['/search from UI'].includes('+')) ||
+                     row['DGrep shim'] === '+' || 
+                     (row['DGrep shim'] && row['DGrep shim'].includes('+'));
+    
+    // Check if item has no "+" in any column (orphan)
+    const isOrphan = !hasActivityLog && !hasSearch;
+    
+    if (isOrphan) {
+        return queryEpicId; // Orphans become children of /query epic
+    } else if (hasActivityLog) {
         return activityLogEpicId;
-    }
-    // If item has "UI /search" tag but no "AL" tag, it should be child of /search Epic
-    if (tags.includes('UI /search')) {
+    } else if (hasSearch) {
         return searchEpicId;
     }
+    
     return null;
 }
 
@@ -139,7 +156,7 @@ function determineParentForLMComponent(parentFeature, generatedLMIds) {
     return null;
 }
 
-async function createWorkItem(row, searchEpicId, activityLogEpicId, dryRun = true, workItems = [], rowNumber = null) {
+async function createWorkItem(row, searchEpicId, activityLogEpicId, queryEpicId, dryRun = true, workItems = [], rowNumber = null, schedulingInfo = null) {
     const featureName = row.Feature?.trim();
     if (!featureName) {
         return null;
@@ -151,11 +168,13 @@ async function createWorkItem(row, searchEpicId, activityLogEpicId, dryRun = tru
     }
         
     const workItemType = getWorkItemType(effort);
-    const title = `[Draft->LAQS] ${featureName}`;
+    // Change title prefix for non-epic items from [Draft->LAQS] to [D->L]
+    const title = `[D->L] ${featureName}`;
     const state = getStateFromProgress(row.Progress);
-    const tags = getTagsFromRow(row);
+    const hasHolidayImpact = schedulingInfo?.hasHolidayImpact || false;
+    const tags = getTagsFromRow(row, hasHolidayImpact);
     const tagsString = tags.join(';');
-    const parentEpicId = determineParentEpic(tags, searchEpicId, activityLogEpicId);
+    const parentEpicId = determineParentEpic(row, searchEpicId, activityLogEpicId, queryEpicId);
 
     // Add to workItems array for markdown report (dry run only)
     if (dryRun) {
@@ -187,6 +206,27 @@ async function createWorkItem(row, searchEpicId, activityLogEpicId, dryRun = tru
     }
 
     // Construct the Azure CLI command
+    const fieldsArray = [
+        `System.AreaPath="${AREA_PATH}"`,
+        `System.IterationPath="${ITERATION_PATH}"`,
+        `System.Tags="${tagsString}"`,
+        `System.State="${state}"`
+    ];
+    
+    if (rowNumber) {
+        fieldsArray.push(`One_custom.CustomField1=${rowNumber.toString().padStart(3, '0')}`);
+    }
+    
+    // Add scheduling dates if provided
+    if (schedulingInfo) {
+        if (schedulingInfo.startDate) {
+            fieldsArray.push(`Microsoft.VSTS.Scheduling.StartDate="${schedulingInfo.startDate}"`);
+        }
+        if (schedulingInfo.targetDate) {
+            fieldsArray.push(`Microsoft.VSTS.Scheduling.TargetDate="${schedulingInfo.targetDate}"`);
+        }
+    }
+    
     const command = [
         'az boards work-item create',
         `--org ${ORGANIZATION}`,
@@ -194,12 +234,8 @@ async function createWorkItem(row, searchEpicId, activityLogEpicId, dryRun = tru
         `--type "${workItemType}"`,
         `--title "${title}"`,
         '--fields',
-        `System.AreaPath="${AREA_PATH}"`,
-        `System.IterationPath="${ITERATION_PATH}"`,
-        `System.Tags="${tagsString}"`,
-        `System.State="${state}"`,
-        rowNumber ? `One_custom.CustomField1=${rowNumber.toString().padStart(3, '0')}` : ''
-    ].filter(Boolean).join(' ');
+        ...fieldsArray
+    ].join(' ');
     
     const { code, stdout, stderr } = await runCommand(command);
     if (code !== 0) {

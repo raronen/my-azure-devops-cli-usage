@@ -34,6 +34,8 @@ Update these constants in the script if needed.
 
 ## Usage
 
+### Work Items Creation
+
 The tool provides two ways to run:
 
 1. **Dry Run Mode** (default) - Preview what work items would be created:
@@ -48,6 +50,60 @@ node main.js
 npm run create
 # or
 node main.js --apply
+```
+
+### Date Updates
+
+#### Start Date Updates
+
+Update start dates for existing work items with "draft->laqs" tag:
+
+1. **Dry Run Mode** (default) - Preview what dates would be updated:
+```bash
+npm run update-dates
+# or
+node update-dates.js
+```
+
+2. **Apply Mode** - Actually update the work item dates:
+```bash
+npm run update-dates-apply
+# or
+node update-dates.js --apply
+```
+
+**Date Update Logic:**
+- **Features**: Random 3-5 week duration (start date calculated from finish date)
+- **PBIs**: Random 1-2 week duration (start date calculated from finish date)
+- Work items without finish dates are skipped and reported
+
+**Custom report filename for date updates:**
+```bash
+node update-dates.js --output my-date-report.md
+```
+
+#### Target Date Updates
+
+Update target dates for existing work items with "draft->laqs" tag by copying their finish date:
+
+1. **Dry Run Mode** (default) - Preview what target dates would be updated:
+```bash
+node update-target-dates.js
+```
+
+2. **Apply Mode** - Actually update the work item target dates:
+```bash
+node update-target-dates.js --apply
+```
+
+**Target Date Update Logic:**
+- Copies the Finish Date value to the Target Date field
+- Work items without finish dates are skipped and reported
+- All work item types are processed the same way
+
+**Custom report filename for target date updates:**
+```bash
+node update-target-dates.js --output my-target-date-report.md
 ```
 
 ### Markdown Report Generation
@@ -118,11 +174,22 @@ Work items are created based on data in `table_data.json`. The file should conta
 
 ## Project Structure
 
-- `main.js` - Entry point and execution logic
+### Work Items Creation
+- `main.js` - Entry point and execution logic for creating work items
 - `create-work-items.js` - Business logic for work item creation
 - `helpers.js` - Utility functions
+- `markdown-generator.js` - Report generation for work item creation
 - `table_data.json` - Work items data
-- `package.json` - Project configuration
+
+### Date Updates
+- `update-dates.js` - Entry point for updating work item start dates
+- `update-target-dates.js` - Entry point for updating work item target dates
+- `azure-query.js` - Azure DevOps query and update operations
+- `date-helpers.js` - Date calculation and formatting utilities
+- `date-report-generator.js` - Report generation for date updates
+
+### Configuration
+- `package.json` - Project configuration and scripts
 
 ## License
 

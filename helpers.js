@@ -39,7 +39,7 @@ function getStateFromProgress(progress) {
     return 'New';
 }
 
-function getTagsFromRow(row) {
+function getTagsFromRow(row, hasHolidayImpact = false) {
     const tags = ['draft->laqs'];
     
     if (row['/search from UI']?.trim().includes('+')) {
@@ -50,6 +50,11 @@ function getTagsFromRow(row) {
     }
     if (row['Activity Log (/query)']?.trim().includes('+')) {
         tags.push('AL');
+    }
+    
+    // Add holiday tag if item is impacted by holiday period
+    if (hasHolidayImpact) {
+        tags.push('h');
     }
         
     return tags;
