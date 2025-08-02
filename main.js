@@ -146,7 +146,28 @@ async function createLMComponentWorkItem(row, generatedLMIds, dryRun, workItems,
         'Activity Log (/query)': ''
     };
     
-    // Use the existing createWorkItem function but with no Epic parent (since these are Feature children)
+    // Build fields array for the Azure CLI command
+    const fieldsArray = [
+        `System.AreaPath="One\\LogAnalytics\\QueryService"`,
+        `System.IterationPath="One\\Bromine\\CY25Q3\\Monthly\\07 Jul (Jun 29 - Jul 26)"`,
+        `System.Tags="${tagsString}"`,
+        `System.State="${state}"`
+    ];
+    
+    if (rowNumber) {
+        fieldsArray.push(`One_custom.CustomField1=${rowNumber.toString().padStart(3, '0')}`);
+    }
+    
+    // Add scheduling dates if provided
+    if (schedulingInfo) {
+        if (schedulingInfo.startDate) {
+            fieldsArray.push(`Microsoft.VSTS.Scheduling.StartDate="${schedulingInfo.startDate}"`);
+        }
+        if (schedulingInfo.targetDate) {
+            fieldsArray.push(`Microsoft.VSTS.Scheduling.TargetDate="${schedulingInfo.targetDate}"`);
+        }
+    }
+    
     const command = [
         'az boards work-item create',
         `--org https://msazure.visualstudio.com`,
@@ -154,12 +175,8 @@ async function createLMComponentWorkItem(row, generatedLMIds, dryRun, workItems,
         `--type "${workItemType}"`,
         `--title "${title}"`,
         '--fields',
-        `System.AreaPath="One\\LogAnalytics\\QueryService"`,
-        `System.IterationPath="One\\Bromine\\CY25Q3\\Monthly\\07 Jul (Jun 29 - Jul 26)"`,
-        `System.Tags="${tagsString}"`,
-        `System.State="${state}"`,
-        rowNumber ? `One_custom.CustomField1=${rowNumber.toString().padStart(3, '0')}` : ''
-    ].filter(Boolean).join(' ');
+        ...fieldsArray
+    ].join(' ');
     
     const { runCommand } = require('./helpers');
     const { code, stdout, stderr } = await runCommand(command);
