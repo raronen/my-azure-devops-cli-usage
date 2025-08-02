@@ -11,6 +11,55 @@ function extractWorkItemId(resultString) {
     return match ? match[1] : null;
 }
 
+// Helper function to determine parent epic for an item
+function determineParentEpic(row, searchEpicId, activityLogEpicId, queryEpicId) {
+    // Check if item has any "+" in Activity Log column
+    const hasActivityLog = row['Activity Log (/query)'] === '+' || 
+                          (row['Activity Log (/query)'] && row['Activity Log (/query)'].includes('+'));
+    
+    // Check if item has any "+" in search columns
+    const hasSearch = row['/search from UI'] === '+' || 
+                     (row['/search from UI'] && row['/search from UI'].includes('+')) ||
+                     row['DGrep shim'] === '+' || 
+                     (row['DGrep shim'] && row['DGrep shim'].includes('+'));
+    
+    // Check if item has no "+" in any column (orphan)
+    const isOrphan = !hasActivityLog && !hasSearch;
+    
+    if (isOrphan) {
+        return queryEpicId; // Orphans become children of /query epic
+    } else if (hasActivityLog) {
+        return activityLogEpicId;
+    } else if (hasSearch) {
+        return searchEpicId;
+    }
+    
+    return null;
+}
+
+// Helper function to update Epic dates
+async function updateEpicDates(epicId, startDate, targetDate) {
+    const { runCommand } = require('./helpers');
+    const { formatDate } = require('./date-helpers');
+    
+    const command = [
+        'az boards work-item update',
+        `--org https://msazure.visualstudio.com`,
+        `--id ${epicId}`,
+        '--fields',
+        `Microsoft.VSTS.Scheduling.StartDate="${formatDate(startDate)}"`,
+        `Microsoft.VSTS.Scheduling.TargetDate="${formatDate(targetDate)}"`
+    ].join(' ');
+    
+    const { code, stderr } = await runCommand(command);
+    if (code !== 0) {
+        console.error(`Error updating Epic #${epicId} dates:`, stderr);
+        return false;
+    }
+    
+    return true;
+}
+
 // Function to create LM Component work items with specific parent relationships
 async function createLMComponentWorkItem(row, generatedLMIds, dryRun, workItems, forceParent = null, rowNumber = null) {
     const featureName = row.Feature?.trim();
@@ -311,6 +360,49 @@ async function main() {
                         console.log(result);
                         console.log('-'.repeat(50));
                     }
+                }
+            }
+        }
+
+        // Update Epic dates based on their children (only in apply mode)
+        if (!dryRun) {
+            console.log('\n📅 Updating Epic dates based on children...');
+            
+            // Get all child items for each epic
+            const queryEpicChildren = scheduledItems.all.filter(item => 
+                determineParentEpic(item.row, searchEpicResult.id, activityLogEpicResult.id, queryEpicResult.id) === queryEpicResult.id
+            );
+            const searchEpicChildren = scheduledItems.all.filter(item => 
+                determineParentEpic(item.row, searchEpicResult.id, activityLogEpicResult.id, queryEpicResult.id) === searchEpicResult.id
+            );
+            const activityLogEpicChildren = scheduledItems.all.filter(item => 
+                determineParentEpic(item.row, searchEpicResult.id, activityLogEpicResult.id, queryEpicResult.id) === activityLogEpicResult.id
+            );
+            
+            // Update each epic with calculated dates
+            const { calculateEpicDates } = require('./scheduling');
+            
+            if (queryEpicChildren.length > 0) {
+                const queryDates = calculateEpicDates(queryEpicChildren);
+                if (queryDates.startDate && queryDates.targetDate) {
+                    await updateEpicDates(queryEpicResult.id, queryDates.startDate, queryDates.targetDate);
+                    console.log(`Updated Epic #${queryEpicResult.id} dates: ${formatDate(queryDates.startDate)} - ${formatDate(queryDates.targetDate)}`);
+                }
+            }
+            
+            if (searchEpicChildren.length > 0) {
+                const searchDates = calculateEpicDates(searchEpicChildren);
+                if (searchDates.startDate && searchDates.targetDate) {
+                    await updateEpicDates(searchEpicResult.id, searchDates.startDate, searchDates.targetDate);
+                    console.log(`Updated Epic #${searchEpicResult.id} dates: ${formatDate(searchDates.startDate)} - ${formatDate(searchDates.targetDate)}`);
+                }
+            }
+            
+            if (activityLogEpicChildren.length > 0) {
+                const activityLogDates = calculateEpicDates(activityLogEpicChildren);
+                if (activityLogDates.startDate && activityLogDates.targetDate) {
+                    await updateEpicDates(activityLogEpicResult.id, activityLogDates.startDate, activityLogDates.targetDate);
+                    console.log(`Updated Epic #${activityLogEpicResult.id} dates: ${formatDate(activityLogDates.startDate)} - ${formatDate(activityLogDates.targetDate)}`);
                 }
             }
         }

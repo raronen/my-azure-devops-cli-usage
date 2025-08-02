@@ -106,7 +106,10 @@ function getNextAvailableDate(date) {
 }
 
 function countActiveItemsOnDate(scheduledItems, checkDate) {
+    // Count items that are active on the given date
+    // An item is active if: startDate <= checkDate < targetDate
     return scheduledItems.filter(item => 
+        item.startDate && item.targetDate &&
         item.startDate <= checkDate && item.targetDate > checkDate
     ).length;
 }
@@ -164,7 +167,6 @@ function scheduleItemByState(item, state, deadline) {
 
 function scheduleItemsWithConstraints(allItems, lmItems = [], deadline, startDate = new Date()) {
     const scheduledItems = [];
-    let currentDate = getNextAvailableDate(new Date(startDate));
     
     // Process state-based items first
     const stateBasedItems = [];
@@ -194,66 +196,59 @@ function scheduleItemsWithConstraints(allItems, lmItems = [], deadline, startDat
     lmNewItems.sort((a, b) => a.duration - b.duration);
     nonLMNewItems.sort((a, b) => a.duration - b.duration);
     
-    // Schedule items ensuring constraints
-    let lmIndex = 0;
-    let nonLMIndex = 0;
+    // Schedule new items one by one, ensuring constraints
+    const allNewItems = [...lmNewItems, ...nonLMNewItems];
+    let currentDate = getNextAvailableDate(new Date(startDate));
     
-    while (lmIndex < lmNewItems.length || nonLMIndex < nonLMNewItems.length) {
-        // Check current parallel count
-        const activeCount = countActiveItemsOnDate(scheduledItems, currentDate);
+    for (const item of allNewItems) {
+        // Find the earliest date we can start this item
+        let proposedStartDate = new Date(currentDate);
         
-        if (activeCount >= MAX_PARALLEL_ITEMS) {
-            // Find next date when an item finishes
-            const nextFinishDate = Math.min(
-                ...scheduledItems
-                    .filter(item => item.targetDate > currentDate)
-                    .map(item => item.targetDate.getTime())
-            );
-            currentDate = addDays(new Date(nextFinishDate), 1);
-            currentDate = getNextAvailableDate(currentDate);
-            continue;
-        }
-        
-        // Check if we need to schedule an LM item (reserve 1 slot until LM items are complete)
-        const activeLMCount = scheduledItems.filter(item => 
-            item.isLM && item.startDate <= currentDate && item.targetDate > currentDate
-        ).length;
-        
-        const needLMItem = lmIndex < lmNewItems.length && activeLMCount === 0;
-        
-        if (needLMItem && activeCount < MAX_PARALLEL_ITEMS) {
-            // Schedule LM item
-            const item = lmNewItems[lmIndex++];
-            const { adjustedDuration, hasHolidayImpact } = adjustForHoliday(currentDate, item.duration);
-            const targetDate = addDays(currentDate, adjustedDuration);
+        // Keep moving forward until we find a date that doesn't violate constraints
+        while (true) {
+            proposedStartDate = getNextAvailableDate(proposedStartDate);
             
-            scheduledItems.push({
-                ...item,
-                startDate: new Date(currentDate),
-                targetDate: targetDate,
-                duration: adjustedDuration,
-                hasHolidayImpact: hasHolidayImpact,
-                isLM: true
-            });
-        } else if (nonLMIndex < nonLMNewItems.length && activeCount < MAX_PARALLEL_ITEMS) {
-            // Schedule non-LM item
-            const item = nonLMNewItems[nonLMIndex++];
-            const { adjustedDuration, hasHolidayImpact } = adjustForHoliday(currentDate, item.duration);
-            const targetDate = addDays(currentDate, adjustedDuration);
+            // Check if starting on this date would violate the 8-item constraint
+            const activeCount = countActiveItemsOnDate(scheduledItems, proposedStartDate);
             
-            scheduledItems.push({
-                ...item,
-                startDate: new Date(currentDate),
-                targetDate: targetDate,
-                duration: adjustedDuration,
-                hasHolidayImpact: hasHolidayImpact,
-                isLM: false
-            });
-        } else {
+            if (activeCount < MAX_PARALLEL_ITEMS) {
+                // Check LM constraint if this is a non-LM item
+                if (!item.isLM) {
+                    const activeLMCount = scheduledItems.filter(scheduledItem => 
+                        scheduledItem.isLM && 
+                        scheduledItem.startDate <= proposedStartDate && 
+                        scheduledItem.targetDate > proposedStartDate
+                    ).length;
+                    
+                    // If no LM items are active and we still have LM items to schedule, reserve a slot
+                    const remainingLMItems = lmNewItems.filter((_, index) => !scheduledItems.some(s => s.id === lmNewItems[index].id));
+                    if (activeLMCount === 0 && remainingLMItems.length > 0 && activeCount >= MAX_PARALLEL_ITEMS - 1) {
+                        // Move to next day
+                        proposedStartDate = addDays(proposedStartDate, 1);
+                        continue;
+                    }
+                }
+                
+                // We found a valid start date
+                break;
+            }
+            
             // Move to next day
-            currentDate = addDays(currentDate, 1);
-            currentDate = getNextAvailableDate(currentDate);
+            proposedStartDate = addDays(proposedStartDate, 1);
         }
+        
+        // Schedule the item
+        const { adjustedDuration, hasHolidayImpact } = adjustForHoliday(proposedStartDate, item.duration);
+        const targetDate = addDays(proposedStartDate, adjustedDuration);
+        
+        scheduledItems.push({
+            ...item,
+            startDate: new Date(proposedStartDate),
+            targetDate: targetDate,
+            duration: adjustedDuration,
+            hasHolidayImpact: hasHolidayImpact,
+            isLM: item.isLM || false
+        });
     }
     
     return scheduledItems;
