@@ -58,6 +58,31 @@ function categorizeItems(workItems) {
     return { activityLogItems, searchItems, queryItems };
 }
 
+function getItemCategory(item) {
+    // Check if item has any "+" in Activity Log column
+    const hasActivityLog = item.row['Activity Log (/query)'] === '+' || 
+                          item.row['Activity Log (/query)'].includes('+');
+    
+    // Check if item has any "+" in search columns
+    const hasSearch = item.row['/search from UI'] === '+' || 
+                     item.row['/search from UI'].includes('+') ||
+                     item.row['DGrep shim'] === '+' || 
+                     item.row['DGrep shim'].includes('+');
+    
+    // Items with no "+" in any column go to query category
+    const hasNoPlus = !hasActivityLog && !hasSearch;
+    
+    if (hasActivityLog) {
+        return 'activityLog';
+    } else if (hasSearch) {
+        return 'search';
+    } else if (hasNoPlus) {
+        return 'query';
+    }
+    
+    return 'query'; // Default fallback
+}
+
 function getStateFromProgress(progress) {
     if (!progress) {
         return 'New';
@@ -189,11 +214,21 @@ function scheduleAllItems(workItems, lmItems = []) {
         lmItem.row?.ParentFeature === 'Generate LM - Search'
     );
     
-    // Combine ALL items for global scheduling
+    // Separate Generate LM parent features from regular items
+    const generateLMFeatures = [];
+    const regularItems = [];
+    
+    for (const item of [...activityLogItems, ...searchItems, ...queryItems]) {
+        if (item.row?.Feature === 'Generate LM - Search' || item.row?.Feature === 'Generate LM - Activity Log') {
+            generateLMFeatures.push(item);
+        } else {
+            regularItems.push(item);
+        }
+    }
+    
+    // Combine regular items with LM children for scheduling
     const allItems = [
-        ...activityLogItems.map(item => ({ ...item, category: 'activityLog' })),
-        ...searchItems.map(item => ({ ...item, category: 'search' })),
-        ...queryItems.map(item => ({ ...item, category: 'query' })),
+        ...regularItems.map(item => ({ ...item, category: getItemCategory(item) })),
         ...lmActivityLogItems.map(item => ({ ...item, category: 'activityLog', isLM: true })),
         ...lmSearchItems.map(item => ({ ...item, category: 'search', isLM: true }))
     ];
@@ -290,6 +325,54 @@ function scheduleAllItems(workItems, lmItems = []) {
         if (currentActiveCount >= 4) { // If we're getting busy, space out more
             currentDate = addDays(proposedStartDate, 1);
         }
+    }
+    
+    // Now schedule the Generate LM parent features based on their children
+    const generateLMActivityLog = generateLMFeatures.find(item => item.row?.Feature === 'Generate LM - Activity Log');
+    const generateLMSearch = generateLMFeatures.find(item => item.row?.Feature === 'Generate LM - Search');
+    
+    if (generateLMActivityLog) {
+        const activityLogLMChildren = globalScheduled.filter(item => item.isLM && item.category === 'activityLog');
+        const parentDates = calculateParentDates(activityLogLMChildren);
+        
+        if (parentDates.startDate && parentDates.targetDate) {
+            const scheduledParent = {
+                ...generateLMActivityLog,
+                category: 'activityLog',
+                startDate: parentDates.startDate,
+                targetDate: parentDates.targetDate,
+                duration: Math.ceil((parentDates.targetDate - parentDates.startDate) / (1000 * 60 * 60 * 24)),
+                hasHolidayImpact: activityLogLMChildren.some(child => child.hasHolidayImpact)
+            };
+            globalScheduled.push(scheduledParent);
+        }
+    }
+    
+    if (generateLMSearch) {
+        const searchLMChildren = globalScheduled.filter(item => item.isLM && item.category === 'search');
+        const parentDates = calculateParentDates(searchLMChildren);
+        
+        if (parentDates.startDate && parentDates.targetDate) {
+            const scheduledParent = {
+                ...generateLMSearch,
+                category: 'search',
+                startDate: parentDates.startDate,
+                targetDate: parentDates.targetDate,
+                duration: Math.ceil((parentDates.targetDate - parentDates.startDate) / (1000 * 60 * 60 * 24)),
+                hasHolidayImpact: searchLMChildren.some(child => child.hasHolidayImpact)
+            };
+            globalScheduled.push(scheduledParent);
+        }
+    }
+    
+    // Validate all items have dates
+    const missingDates = globalScheduled.filter(item => !item.startDate || !item.targetDate);
+    if (missingDates.length > 0) {
+        console.error('❌ CRITICAL ERROR: Items missing scheduling dates:');
+        missingDates.forEach(item => {
+            console.error(`  - ${item.title || item.row?.Feature}: startDate=${item.startDate}, targetDate=${item.targetDate}`);
+        });
+        throw new Error(`${missingDates.length} items are missing scheduling dates!`);
     }
     
     // Separate scheduled items back into categories for return
