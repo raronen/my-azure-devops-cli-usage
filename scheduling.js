@@ -165,8 +165,30 @@ function scheduleItemByState(item, state, deadline) {
     }
 }
 
-function scheduleItemsWithConstraints(allItems, lmItems = [], deadline, startDate = new Date()) {
+function scheduleAllItems(workItems, lmItems = []) {
+    // Categorize items but schedule everything together to respect global constraint
+    const { activityLogItems, searchItems, orphanItems } = categorizeItems(workItems);
+    
+    // Identify which LM items belong to which category
+    const lmActivityLogItems = lmItems.filter(lmItem => 
+        lmItem.row?.ParentFeature === 'Generate LM - Activity Log' || 
+        lmItem.row?.ParentFeature === 'Generate LM'
+    );
+    const lmSearchItems = lmItems.filter(lmItem => 
+        lmItem.row?.ParentFeature === 'Generate LM - Search'
+    );
+    
+    // Combine ALL items for global scheduling
+    const allItems = [
+        ...activityLogItems.map(item => ({ ...item, category: 'activityLog' })),
+        ...searchItems.map(item => ({ ...item, category: 'search' })),
+        ...orphanItems.map(item => ({ ...item, category: 'orphan' })),
+        ...lmActivityLogItems.map(item => ({ ...item, category: 'activityLog', isLM: true })),
+        ...lmSearchItems.map(item => ({ ...item, category: 'search', isLM: true }))
+    ];
+    
     const scheduledItems = [];
+    const globalScheduled = []; // Track ALL scheduled items for constraint checking
     
     // Process state-based items first
     const stateBasedItems = [];
@@ -175,60 +197,49 @@ function scheduleItemsWithConstraints(allItems, lmItems = [], deadline, startDat
     for (const item of allItems) {
         const state = getStateFromProgress(item.row?.Progress);
         if (state === 'Done' || state === 'Active') {
-            stateBasedItems.push(scheduleItemByState(item, state, deadline));
+            const scheduledItem = scheduleItemByState(item, state, ACTIVITY_LOG_DEADLINE);
+            stateBasedItems.push(scheduledItem);
+            globalScheduled.push(scheduledItem);
         } else {
             newItems.push({
                 ...item,
                 duration: getRandomDuration(item.workItemType),
-                isLM: lmItems.includes(item)
+                isLM: item.isLM || false
             });
         }
     }
     
-    // Add state-based items
-    scheduledItems.push(...stateBasedItems);
+    // Sort new items by priority (Activity Log MUST come first due to dependencies)
+    newItems.sort((a, b) => {
+        // Priority 1: Category - Activity Log has HIGHEST priority (Search depends on it)
+        const categoryPriority = { activityLog: 0, orphan: 1, search: 2 };
+        if (categoryPriority[a.category] !== categoryPriority[b.category]) {
+            return categoryPriority[a.category] - categoryPriority[b.category];
+        }
+        
+        // Priority 2: LM items first within same category
+        if (a.isLM !== b.isLM) {
+            return b.isLM ? 1 : -1; // LM items first
+        }
+        
+        // Priority 3: Shorter duration first for better scheduling
+        return a.duration - b.duration;
+    });
     
-    // Separate LM and non-LM items
-    const lmNewItems = newItems.filter(item => item.isLM);
-    const nonLMNewItems = newItems.filter(item => !item.isLM);
+    // Schedule new items one by one with global constraint checking
+    let currentDate = getNextAvailableDate(new Date());
     
-    // Sort by duration (shorter first)
-    lmNewItems.sort((a, b) => a.duration - b.duration);
-    nonLMNewItems.sort((a, b) => a.duration - b.duration);
-    
-    // Schedule new items one by one, ensuring constraints
-    const allNewItems = [...lmNewItems, ...nonLMNewItems];
-    let currentDate = getNextAvailableDate(new Date(startDate));
-    
-    for (const item of allNewItems) {
+    for (const item of newItems) {
         // Find the earliest date we can start this item
         let proposedStartDate = new Date(currentDate);
         
-        // Keep moving forward until we find a date that doesn't violate constraints
         while (true) {
             proposedStartDate = getNextAvailableDate(proposedStartDate);
             
-            // Check if starting on this date would violate the 8-item constraint
-            const activeCount = countActiveItemsOnDate(scheduledItems, proposedStartDate);
+            // Check GLOBAL constraint - count ALL active items on this date
+            const activeCount = countActiveItemsOnDate(globalScheduled, proposedStartDate);
             
             if (activeCount < MAX_PARALLEL_ITEMS) {
-                // Check LM constraint if this is a non-LM item
-                if (!item.isLM) {
-                    const activeLMCount = scheduledItems.filter(scheduledItem => 
-                        scheduledItem.isLM && 
-                        scheduledItem.startDate <= proposedStartDate && 
-                        scheduledItem.targetDate > proposedStartDate
-                    ).length;
-                    
-                    // If no LM items are active and we still have LM items to schedule, reserve a slot
-                    const remainingLMItems = lmNewItems.filter((_, index) => !scheduledItems.some(s => s.id === lmNewItems[index].id));
-                    if (activeLMCount === 0 && remainingLMItems.length > 0 && activeCount >= MAX_PARALLEL_ITEMS - 1) {
-                        // Move to next day
-                        proposedStartDate = addDays(proposedStartDate, 1);
-                        continue;
-                    }
-                }
-                
                 // We found a valid start date
                 break;
             }
@@ -241,70 +252,36 @@ function scheduleItemsWithConstraints(allItems, lmItems = [], deadline, startDat
         const { adjustedDuration, hasHolidayImpact } = adjustForHoliday(proposedStartDate, item.duration);
         const targetDate = addDays(proposedStartDate, adjustedDuration);
         
-        scheduledItems.push({
+        const scheduledItem = {
             ...item,
             startDate: new Date(proposedStartDate),
             targetDate: targetDate,
             duration: adjustedDuration,
             hasHolidayImpact: hasHolidayImpact,
             isLM: item.isLM || false
-        });
+        };
+        
+        // Add to GLOBAL tracking
+        globalScheduled.push(scheduledItem);
+        
+        // Only advance currentDate slightly to allow for some parallel starts
+        // but not all on the same day
+        const currentActiveCount = countActiveItemsOnDate(globalScheduled, proposedStartDate);
+        if (currentActiveCount >= 4) { // If we're getting busy, space out more
+            currentDate = addDays(proposedStartDate, 1);
+        }
     }
     
-    return scheduledItems;
-}
-
-function scheduleAllItems(workItems, lmItems = []) {
-    // Categorize regular work items
-    const { activityLogItems, searchItems, orphanItems } = categorizeItems(workItems);
-    
-    // Identify which LM items belong to which category
-    const lmActivityLogItems = lmItems.filter(lmItem => 
-        lmItem.row?.ParentFeature === 'Generate LM - Activity Log' || 
-        lmItem.row?.ParentFeature === 'Generate LM'
-    );
-    const lmSearchItems = lmItems.filter(lmItem => 
-        lmItem.row?.ParentFeature === 'Generate LM - Search'
-    );
-    
-    // Combine regular and LM items for each category
-    const allActivityLogItems = [...activityLogItems, ...lmActivityLogItems];
-    const allSearchItems = [...searchItems, ...lmSearchItems];
-    
-    // Schedule Activity Log items first (with LM items included)
-    const scheduledActivityLog = scheduleItemsWithConstraints(
-        allActivityLogItems, 
-        lmActivityLogItems, 
-        ACTIVITY_LOG_DEADLINE, 
-        new Date()
-    );
-    
-    // Find when Activity Log items finish to start Search items
-    const activityLogEndDate = scheduledActivityLog.length > 0 
-        ? new Date(Math.max(...scheduledActivityLog.map(item => item.targetDate)))
-        : new Date();
-    
-    // Schedule Search items (with LM items included)
-    const scheduledSearch = scheduleItemsWithConstraints(
-        allSearchItems, 
-        lmSearchItems, 
-        SEARCH_DEADLINE, 
-        activityLogEndDate
-    );
-    
-    // Schedule orphan items
-    const scheduledOrphans = scheduleItemsWithConstraints(
-        orphanItems, 
-        [], 
-        ACTIVITY_LOG_DEADLINE, 
-        new Date()
-    );
+    // Separate scheduled items back into categories for return
+    const scheduledActivityLog = globalScheduled.filter(item => item.category === 'activityLog');
+    const scheduledSearch = globalScheduled.filter(item => item.category === 'search');
+    const scheduledOrphans = globalScheduled.filter(item => item.category === 'orphan');
     
     return {
         activityLog: scheduledActivityLog,
         search: scheduledSearch,
         orphans: scheduledOrphans,
-        all: [...scheduledActivityLog, ...scheduledSearch, ...scheduledOrphans]
+        all: globalScheduled
     };
 }
 
